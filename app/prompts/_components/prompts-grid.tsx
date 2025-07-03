@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"; // Import Shadcn Card
 import { motion } from "framer-motion";
 import { Copy, Edit2, Plus, Trash2 } from "lucide-react";
 import { useState, FormEvent } from "react";
-import { createPrompt, updatePrompt } from "@/actions/prompts-actions";
+import { createPrompt, updatePrompt, deletePrompt } from "@/actions/prompts-actions";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger
@@ -42,6 +42,11 @@ export const PromptsGrid = ({ initialPrompts }: PromptsGridProps) => {
 
   // --- Add State for Editing ---
   const [editingId, setEditingId] = useState<number | null>(null); // null when creating, number (ID) when editing
+
+  // --- Add State for Deletion ---
+  const [deletingId, setDeletingId] = useState<number | null>(null); // ID of prompt to delete
+  const [isDeleting, setIsDeleting] = useState(false);             // Deletion loading state
+  const [deleteError, setDeleteError] = useState<string | null>(null); // Deletion error state
 
   // --- Event Handlers ---
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -93,7 +98,48 @@ export const PromptsGrid = ({ initialPrompts }: PromptsGridProps) => {
       setIsSubmitting(false);
     }
   };
-  // --- End Handlers ---
+
+  // --- Add Handlers for Deletion ---
+  const handleOpenDeleteDialog = (id: number) => {
+    setDeletingId(id); // Set the ID to trigger the dialog opening
+    setDeleteError(null); // Clear any previous delete errors
+  };
+
+  const handleCloseDeleteDialog = () => {
+    // Prevent closing if deletion is in progress
+    if (!isDeleting) {
+      setDeletingId(null);
+      setDeleteError(null);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deletingId === null) return; // Exit if no ID is set
+    setIsDeleting(true); // Set loading state
+    setDeleteError(null);
+    try {
+      await deletePrompt(deletingId);
+      setPrompts((prevPrompts) => prevPrompts.filter((p) => p.id !== deletingId));
+      setDeletingId(null);
+      setIsDeleting(false);
+    } catch (err) {
+      console.error("Delete Prompt Error:", err);
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete prompt.");
+      setIsDeleting(false);
+    }
+  };
+  // --- End Deletion Handlers ---
+
+  // --- Handle Copy Functionality ---
+  const handleCopy = async (id: number, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1500);
+    } catch (err) {
+      console.error("Failed to copy text:", err);
+    }
+  };
 
   // Display message and create button if no prompts exist
   if (prompts.length === 0) {
@@ -149,6 +195,34 @@ export const PromptsGrid = ({ initialPrompts }: PromptsGridProps) => {
         </Dialog>
       </div>
 
+      {/* --- Add Delete Confirmation Dialog --- */}
+      <Dialog open={deletingId !== null} onOpenChange={(open) => { if(!open) handleCloseDeleteDialog(); }}>
+        <DialogContent onInteractOutside={(e) => { if(isDeleting) e.preventDefault(); }}>
+          <DialogHeader>
+            <DialogTitle>Are you absolutely sure?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the prompt:
+              <br />
+              <strong className="break-words">
+                {prompts.find(p => p.id === deletingId)?.name ?? 'this prompt'}
+              </strong>
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError && (
+            <p className="text-sm text-red-600 dark:text-red-400 text-center py-2">{deleteError}</p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseDeleteDialog} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={isDeleting}>
+              {isDeleting ? "Deleting..." : "Yes, delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* --- End Delete Confirmation Dialog --- */}
+
       {/* Responsive Grid Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Map over the prompts state array */}
@@ -175,8 +249,24 @@ export const PromptsGrid = ({ initialPrompts }: PromptsGridProps) => {
                   {/* Action Buttons */}
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit" onClick={() => handleEditClick(prompt)}> <Edit2 className="w-4 h-4" /> </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Delete" onClick={() => console.log('Delete', prompt.id)}> <Trash2 className="w-4 h-4" /> </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Copy" onClick={() => console.log('Copy', prompt.id)}> <Copy className="w-4 h-4" /> </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-500"
+                      title="Delete"
+                      onClick={() => handleOpenDeleteDialog(prompt.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title={copiedId === prompt.id ? "Copied!" : "Copy"}
+                      onClick={() => handleCopy(prompt.id, prompt.content)}
+                    >
+                      {copiedId === prompt.id ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                    </Button>
                   </div>
                 </div>
                 {/* Prompt Content */}
