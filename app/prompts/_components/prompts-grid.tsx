@@ -5,7 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card"; // Import Shadcn Card
 import { motion } from "framer-motion";
 import { Copy, Edit2, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, FormEvent } from "react";
+import { createPrompt, updatePrompt } from "@/actions/prompts-actions";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Check } from "lucide-react";
 
 // Define the expected structure for a prompt object
 interface Prompt {
@@ -23,10 +32,70 @@ interface PromptsGridProps {
 export const PromptsGrid = ({ initialPrompts }: PromptsGridProps) => {
   // Initialize component state with the data passed via props
   const [prompts, setPrompts] = useState<Prompt[]>(initialPrompts);
-  // Placeholder state for copy confirmation (implement later)
-  // const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null); // For copy functionality later
 
-   // Display message and create button if no prompts exist
+  // --- State for Create/Edit Form ---
+  const [isFormOpen, setIsFormOpen] = useState(false); // Dialog visibility
+  const [formData, setFormData] = useState({ name: "", description: "", content: "" }); // Form field values
+  const [isSubmitting, setIsSubmitting] = useState(false); // Loading state during submission
+  const [error, setError] = useState<string | null>(null); // Error message state
+
+  // --- Add State for Editing ---
+  const [editingId, setEditingId] = useState<number | null>(null); // null when creating, number (ID) when editing
+
+  // --- Event Handlers ---
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData((prevData) => ({ ...prevData, [name]: value }));
+  };
+
+  const resetAndCloseForm = () => {
+    setIsFormOpen(false);
+    setFormData({ name: "", description: "", content: "" });
+    setError(null);
+    setIsSubmitting(false);
+    setEditingId(null); // Reset editingId when closing/resetting
+  };
+
+  const handleEditClick = (promptToEdit: Prompt) => {
+    setEditingId(promptToEdit.id); // Store the ID of the prompt being edited
+    setFormData({
+      name: promptToEdit.name,
+      description: promptToEdit.description,
+      content: promptToEdit.content,
+    });
+    setError(null); // Clear errors
+    setIsFormOpen(true); // Open the dialog
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      if (editingId !== null) {
+        // --- UPDATE PATH ---
+        const updatedPrompt = await updatePrompt({ id: editingId, ...formData });
+        setPrompts((prevPrompts) =>
+          prevPrompts.map((p) => (p.id === editingId ? updatedPrompt : p))
+        );
+        console.log(`Prompt ${editingId} updated.`);
+      } else {
+        // --- CREATE PATH ---
+        const newPrompt = await createPrompt(formData);
+        setPrompts((prevPrompts) => [newPrompt, ...prevPrompts]);
+        console.log(`Prompt created with ID ${newPrompt.id}.`);
+      }
+      resetAndCloseForm();
+    } catch (err) {
+      console.error("Save Prompt Error:", err);
+      setError(err instanceof Error ? err.message : "Failed to save prompt.");
+      setIsSubmitting(false);
+    }
+  };
+  // --- End Handlers ---
+
+  // Display message and create button if no prompts exist
   if (prompts.length === 0) {
     return (
       <div className="text-center py-12">
@@ -40,11 +109,44 @@ export const PromptsGrid = ({ initialPrompts }: PromptsGridProps) => {
 
   return (
     <>
-      {/* Button to trigger creating a new prompt */}
+      {/* Create Button and Dialog Setup */}
       <div className="mb-6 flex justify-end">
-        <Button onClick={() => { /* Add create logic */ }} className="gap-2">
-          <Plus className="w-5 h-5" /> Create Prompt
-        </Button>
+        <Dialog open={isFormOpen} onOpenChange={(open) => { if (!open) resetAndCloseForm(); else setIsFormOpen(open); }}>
+          <DialogTrigger asChild>
+            <Button onClick={() => { setEditingId(null); resetAndCloseForm(); setIsFormOpen(true); }} className="gap-2">
+              <Plus className="w-5 h-5" /> Create Prompt
+            </Button>
+          </DialogTrigger>
+          <DialogContent onInteractOutside={(e) => { if(isSubmitting) e.preventDefault();}}>
+            <DialogHeader>
+              <DialogTitle>{editingId ? 'Edit Prompt' : 'Create New Prompt'}</DialogTitle>
+              <DialogDescription>
+                {editingId ? 'Make changes to your existing prompt.' : 'Enter the details for your new prompt.'}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="name" className="text-right">Name</Label>
+                <Input id="name" name="name" value={formData.name} onChange={handleInputChange} required className="col-span-3" disabled={isSubmitting} />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="description" className="text-right">Description</Label>
+                <Input id="description" name="description" value={formData.description} onChange={handleInputChange} required className="col-span-3" disabled={isSubmitting} />
+              </div>
+              <div className="grid grid-cols-4 items-start gap-4">
+                <Label htmlFor="content" className="text-right pt-2">Content</Label>
+                <Textarea id="content" name="content" value={formData.content} onChange={handleInputChange} required className="col-span-3 min-h-[120px]" disabled={isSubmitting} />
+              </div>
+              {error && <p className="col-span-4 text-center text-sm text-red-500 px-6">{error}</p>}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={resetAndCloseForm} disabled={isSubmitting}>Cancel</Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? (editingId ? 'Saving...' : 'Creating...') : (editingId ? 'Save Changes' : 'Create Prompt')}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Responsive Grid Layout */}
@@ -72,7 +174,7 @@ export const PromptsGrid = ({ initialPrompts }: PromptsGridProps) => {
                   </div>
                   {/* Action Buttons */}
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit" onClick={() => console.log('Edit', prompt.id)}> <Edit2 className="w-4 h-4" /> </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit" onClick={() => handleEditClick(prompt)}> <Edit2 className="w-4 h-4" /> </Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7" title="Delete" onClick={() => console.log('Delete', prompt.id)}> <Trash2 className="w-4 h-4" /> </Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7" title="Copy" onClick={() => console.log('Copy', prompt.id)}> <Copy className="w-4 h-4" /> </Button>
                   </div>
