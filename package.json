@@ -12,6 +12,7 @@
     "db:seed": "npx tsx db/seed/index.ts"
   },
   "dependencies": {
+    "@radix-ui/react-slot": "^1.2.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.0.1",
