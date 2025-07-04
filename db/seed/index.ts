@@ -1,6 +1,52 @@
 import { db } from "@/db"; // Adjust the import path if your db/index.ts is elsewhere
 import { prompts } from "../schema/prompts-schema"; // Import the Drizzle schema definition
 
+// --- Clerk Backend Client Setup ---
+import { createClerkClient } from "@clerk/backend";
+
+if (!process.env.CLERK_SECRET_KEY) {
+  throw new Error("CLERK_SECRET_KEY environment variable is not set.");
+}
+const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
+// --- End Clerk Setup ---
+
+// --- Test User Definitions ---
+const testUsers = [
+  {
+    emailAddress: ["user1+clerk_test@example.com"],
+    password: "testPassword123!",
+    firstName: "Test",
+    lastName: "User1"
+  },
+  {
+    emailAddress: ["user2+clerk_test@example.com"],
+    password: "testPassword123!",
+    firstName: "Test",
+    lastName: "User2"
+  },
+  {
+    emailAddress: ["user3+clerk_test@example.com"],
+    password: "testPassword123!",
+    firstName: "Test",
+    lastName: "User3"
+  }
+];
+// --- End Test User Definitions ---
+
+// --- Base Prompt Data (without user_id yet) ---
+const basePrompts = [
+  { name: "Code Explainer", description: "Explains code in simple terms", content: "Explain this code..." },
+  { name: "Bug Finder", description: "Helps identify bugs", content: "Find bugs in this code..." },
+  { name: "Feature Planner", description: "Helps plan features", content: "Plan this feature..." },
+  { name: "SQL Helper", description: "Assists with SQL", content: "Write SQL for..." },
+  { name: "API Docs Writer", description: "Generates API docs", content: "Document this API..." },
+  { name: "Code Refactorer", description: "Suggests improvements", content: "Refactor this code..." },
+  { name: "Test Case Generator", description: "Creates test cases", content: "Generate tests for..." },
+  { name: "UI/UX Reviewer", description: "Reviews UI/UX", content: "Review this UI..." },
+  { name: "Git Command Helper", description: "Helps with Git", content: "Git command for..." },
+];
+// --- End Base Prompt Data ---
+
 /**
  * An array of sample prompt objects to be inserted into the database.
  * Note: We don't specify 'id', 'created_at', or 'updated_at' as they
@@ -61,33 +107,65 @@ async function seed() {
   try {
     console.log("🌱 Starting database seeding...");
 
-    // Optional: Delete all existing prompts before inserting new ones.
-    // This makes the script idempotent (safe to run multiple times).
-    // Use with caution, especially outside of development!
-    console.log("🗑️ Clearing existing data from 'prompts' table...");
-    await db.delete(prompts);
+    // --- Create Test Users via Clerk API ---
+    console.log("Creating test users via Clerk API...");
+    // Optional: Delete existing test users first for idempotency
+    // const existingTestUsers = await clerk.users.getUserList({ emailAddress: testUsers.flatMap(u => u.emailAddress) });
+    // if (existingTestUsers.data.length > 0) {
+    //   console.log(`Deleting ${existingTestUsers.data.length} existing test users...");
+    //   await Promise.all(existingTestUsers.data.map(user => clerk.users.deleteUser(user.id)));
+    // }
 
-    // Insert the array of seed prompts into the 'prompts' table.
+    // Create users concurrently
+    const createdUsers = await Promise.all(
+      testUsers.map(userData => clerk.users.createUser(userData))
+    );
+    console.log(`Successfully created ${createdUsers.length} test users:`, createdUsers.map(u => ({ id: u.id, email: u.emailAddresses[0]?.emailAddress })));
+    // --- End User Creation ---
+
+    // --- Prepare Prompts with User IDs ---
+    if (createdUsers.length === 0) {
+        throw new Error("No test users were created. Cannot proceed with seeding prompts.");
+    }
+    // Distribute prompts among the created users (e.g., round-robin or assign chunks)
+    // Here, we assign every 3 prompts to a user (assuming 9 base prompts and 3 users)
+    const promptsWithUsers = basePrompts.map((prompt, index) => {
+        const userIndex = Math.floor(index / (basePrompts.length / createdUsers.length));
+        const userId = createdUsers[userIndex].id;
+        if (!userId) {
+            throw new Error(`Could not get userId for user index ${userIndex}`);
+        }
+        return {
+            ...prompt,
+            user_id: userId, // Assign the Clerk user ID
+        };
+    });
+    // --- End Prompt Preparation ---
+
+    // --- Seed Database ---
+    console.log("🗑️ Clearing existing data from 'prompts' table...");
+    await db.delete(prompts); // Clear existing prompts first
+
     console.log("📥 Inserting seed data into 'prompts' table...");
-    await db.insert(prompts).values(seedPrompts);
+    await db.insert(prompts).values(promptsWithUsers); // Insert prompts with user_id
+    // --- End Database Seed ---
 
     console.log("✅ Database seeding completed successfully!");
 
   } catch (error) {
-    // Catch and log any errors during the seeding process.
     console.error("❌ Error during database seeding:", error);
-    // Optionally re-throw the error to indicate script failure
+    if (error.errors) {
+       console.error("Clerk API Errors:", error.errors);
+    }
     throw error;
   } finally {
-    // IMPORTANT: Close the database connection pool when the script is done.
-    // Standalone scripts need to explicitly close connections.
-    console.log("🚪 Closing database connection...");
-    // Access the underlying client (syntax might depend on exact driver setup)
-    // For the `postgres` library, it's typically .$client.end()
-    await db.$client.end();
-    console.log("🔌 Database connection closed.");
+    // IMPORTANT: Ensure the database connection is closed
+    // This might not be strictly necessary if drizzle-kit handles it,
+    // but good practice for standalone scripts.
+    // await db.$client.end(); // Uncomment if using node directly
+    console.log("🚪 Seed script finished.");
   }
 }
 
-// Immediately invoke the seed function when the script is run.
+// Run the seed function
 seed();

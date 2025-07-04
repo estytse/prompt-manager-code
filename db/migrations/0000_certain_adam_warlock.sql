@@ -1,5 +1,6 @@
 CREATE TABLE "prompts" (
 	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" text NOT NULL,
 	"name" text NOT NULL,
 	"description" text NOT NULL,
 	"content" text NOT NULL,

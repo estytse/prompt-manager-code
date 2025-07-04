@@ -37,3 +37,10 @@ Backend: PostgreSQL, Supabase, Drizzle
 
 - Write db schemas as drizzle schemas in db/schema (Ex: db/schema/prompts-schema.ts)
 - Write db queries with drizzle as server actions in an actions folder at the root (Ex: actions/prompts-actions.ts)
+
+## Auth Rules 
+
+- We use Clerk for user authentication.
+- Use Clerk middleware to protect routes.
+- Use Clerk components (`<UserButton>`, `<SignInButton>`, etc.) for UI elements.
+- Use Clerk server-side helpers (`auth()`) in Server Actions to get user ID.

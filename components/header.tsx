@@ -5,6 +5,9 @@ import { motion } from "framer-motion";
 import { BookMarked } from "lucide-react"; // Icon (install if needed: npm i lucide-react)
 import Link from "next/link";
 import { usePathname } from "next/navigation"; // Hook to get current path
+// Import Clerk components
+import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
+import { Button } from "@/components/ui/button";
 
 export const Header = () => {
   const pathname = usePathname(); // Get current route
@@ -33,7 +36,7 @@ export const Header = () => {
             </span>
           </motion.div>
 
-          {/* Navigation Links */}
+          {/* Navigation & Auth Section */}
           <nav className="flex items-center gap-6">
             {navItems.map((item, index) => (
               <motion.div /* ... animation props ... */
@@ -55,6 +58,17 @@ export const Header = () => {
                 </Link>
               </motion.div>
             ))}
+
+            {/* --- Clerk Auth Components --- */}
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
+            <SignedOut>
+              <SignInButton mode="modal">
+                <Button>Sign in</Button>
+              </SignInButton>
+            </SignedOut>
+            {/* --- End Clerk Auth Components --- */}
           </nav>
         </div>
       </div>

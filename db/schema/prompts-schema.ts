@@ -16,6 +16,13 @@ export const prompts = pgTable("prompts", {
   id: serial("id").primaryKey(),
 
   /**
+   * 'user_id' column:
+   * - Type: text (Clerk user IDs are strings)
+   * - Constraint: notNull() - Every prompt must belong to a user
+   */
+  user_id: text("user_id").notNull(),
+
+  /**
    * 'name' column:
    * - Type: text (Variable-length character string)
    * - Constraint: notNull() - This column cannot contain NULL values.
